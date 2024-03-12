@@ -1,0 +1,832 @@
+/*
+/* Autor
+/* Gerardo Fernandez Herrera
+/* Noviembre 2023
+*/
+
+Software:
+--------
+MySQl Enterprise Server 8.0.34 
+MySQL Shell MySQL 8.2.0
+Red Hat Enterprise Linux 9
+
+Como prueba practica, se configuró una réplica entre los servidores de sandbox lvwmysqlsndbd1 y lvwmysqlsndbd2.
+El resumen de los pasos a seguir es el siguiente:
+
+1- En ambos servidore, crear un usuario especial con todos los permisos:
+
+create user myadmin@'%' identified by 'my$admin$24';
+grant all privileges on *.* to 'myadmin'@'%' with grant option;
+
+-- Descomprimir el software de MySQL Shell
+-- Crear symbolic link (  ln -s mysql-shell-commercial-8.0.36-linux-glibc2.28-x86-64bit mysqlshell )
+
+
+2- Modificar el my.cnf de los servidores, definir quien es master y slave.
+   Agregar esta sección al archivo:
+   
+# Replica
+server_id                      = 1 #Aca defino el rol inicial de cada host
+binlog_format=ROW
+log_slave_updates=TRUE
+master_info_repository=TABLE
+relay_log_info_repository=TABLE
+gtid_mode                      = ON #Default: OFF
+sync_master_info               = 1 #Default: 10000
+report_host                    = lvwmysqlsndbd1 #Default: ''
+report_port                    = 33066 #Default: 3306
+enforce_gtid_consistency       = ON #Default: OFF
+
+
+3- Conectarse con MySQl Shell con root o el usuario especial para configurar la réplica:
+
+mysqlsh root@localhost:33066
+
+4- Verificar si los servidores están aptos para usar:
+
+dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066');
+dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd2.corp.ute.com.uy:33066');
+
+5- Si hay algun problema, corregirlo con el propio MySQl Shell
+
+dba.configureInstance('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066');
+dba.configureInstance('myadmin@lvwmysqlsndbd2.corp.ute.com.uy:33066');
+
+6- Volver a revisar que haya quedado solucionado:
+
+dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066');
+dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd2.corp.ute.com.uy:33066');
+
+7- Configurar el ReplicaSet. Definir usuario y password del usuario admin  
+
+dba.configureReplicaSetInstance('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066',{clusterAdmin:"'rsadmin'@'%'",clusterAdminPassword:"rsadmin$12"})
+
+8- Crear el ReplicasSet. Conectarse con el administrador de la réplica y elegir un nombre:
+
+mysqlsh myadmin@localhost:33066
+
+JS > \connect rsadmin@lvwmysqlsndbd1:33066
+ 
+var rs = dba.createReplicaSet('ReplicaSnd12');
+
+9- Verificar que haya quedado bien:
+
+JS > rs.status()
+
+10- Agregar el host secundario
+
+JS > rs.addInstance('lvwmysqlsndbd2.corp.ute.com.uy:33066');
+
+JS > rs.status()
+
+11- Hacer un switchover. Se indica que servidor debe ser el primario
+
+rs.setPrimaryInstance('lvwmysqlsndbd2.corp.ute.com.uy:33066');
+
+JS > rs.status()
+
+
+12- A continuacion se copia el log de ejecucion de todos los comandos utilizados en la sesión práctica:
+
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysqlsh root@localhost:33066
+Please provide the password for 'root@localhost:33066':
+MySQL Shell 8.2.0-commercial
+
+Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+Oracle is a registered trademark of Oracle Corporation and/or its affiliates.
+Other names may be trademarks of their respective owners.
+
+Type '\help' or '\?' for help; '\quit' to exit.
+Creating a Classic session to 'root@localhost:33066'
+Cancelled
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysqlsh root@localhost:33066
+Please provide the password for 'root@localhost:33066': ************
+Save password for 'root@localhost:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+MySQL Shell 8.2.0-commercial
+
+Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+Oracle is a registered trademark of Oracle Corporation and/or its affiliates.
+Other names may be trademarks of their respective owners.
+
+Type '\help' or '\?' for help; '\quit' to exit.
+Creating a Classic session to 'root@localhost:33066'
+Fetching schema names for auto-completion... Press ^C to stop.
+Your MySQL connection id is 55
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+No default schema selected; type \use <schema> to set one.
+ MySQL  localhost:33066 ssl  JS > \sql
+Switching to SQL mode... Commands end with ;
+Fetching global names for auto-completion... Press ^C to stop.
+ MySQL  localhost:33066 ssl  SQL > show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
++--------------------+
+4 rows in set (0.0009 sec)
+ MySQL  localhost:33066 ssl  SQL > \js
+Switching to JavaScript mode...
+ MySQL  localhost:33066 ssl  JS > dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066');
+Please provide the password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066':
+Dba.checkInstanceConfiguration: Access denied for user 'myadmin'@'lvwmysqlsndbd1.corp.ute.com.uy' (using password: NO) (MyS      QL Error 1045)
+ MySQL  localhost:33066 ssl  JS > \sql
+Switching to SQL mode... Commands end with ;
+ MySQL  localhost:33066 ssl  SQL > flush privileges;
+Query OK, 0 rows affected (0.0026 sec)
+ MySQL  localhost:33066 ssl  SQL > SELECT DISTINCT CONCAT('SHOW GRANTS FOR ''', user, '''@''', host, ''';') FROM mysql.user      ;
++----------------------------------------------------------+
+| CONCAT('SHOW GRANTS FOR ''', user, '''@''', host, ''';') |
++----------------------------------------------------------+
+| SHOW GRANTS FOR 'myadmin'@'%';                           |
+| SHOW GRANTS FOR 'mysql.infoschema'@'localhost';          |
+| SHOW GRANTS FOR 'mysql.session'@'localhost';             |
+| SHOW GRANTS FOR 'mysql.sys'@'localhost';                 |
+| SHOW GRANTS FOR 'root'@'localhost';                      |
++----------------------------------------------------------+
+5 rows in set (0.0006 sec)
+ MySQL  localhost:33066 ssl  SQL >
+ MySQL  localhost:33066 ssl  SQL >
+ MySQL  localhost:33066 ssl  SQL >
+ MySQL  localhost:33066 ssl  SQL > \quit
+Bye!
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysql -umyadmin -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 57
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+
+Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> exit
+Bye
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysqlsh root@localhost:33066
+Please provide the password for 'root@localhost:33066': ************
+Save password for 'root@localhost:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+MySQL Shell 8.2.0-commercial
+
+Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+Oracle is a registered trademark of Oracle Corporation and/or its affiliates.
+Other names may be trademarks of their respective owners.
+
+Type '\help' or '\?' for help; '\quit' to exit.
+Creating a Classic session to 'root@localhost:33066'
+Fetching schema names for auto-completion... Press ^C to stop.
+Your MySQL connection id is 58
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+No default schema selected; type \use <schema> to set one.
+ MySQL  localhost:33066 ssl  JS > dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066');
+Please provide the password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066': ****
+Save password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+Validating local MySQL instance listening at port 33066 for use in an InnoDB cluster...
+
+This instance reports its own address as lvwmysqlsndbd1:33066
+
+Checking whether existing tables comply with Group Replication requirements...
+No incompatible tables detected
+
+Checking instance configuration...
+
+NOTE: Some configuration options need to be fixed:
++----------------------------------------+---------------+----------------+----------------------------+
+| Variable                               | Current Value | Required Value | Note                       |
++----------------------------------------+---------------+----------------+----------------------------+
+| binlog_transaction_dependency_tracking | COMMIT_ORDER  | WRITESET       | Update the server variable |
++----------------------------------------+---------------+----------------+----------------------------+
+
+NOTE: Please use the dba.configureInstance() command to repair these issues.
+
+{
+    "config_errors": [
+        {
+            "action": "server_update",
+            "current": "COMMIT_ORDER",
+            "option": "binlog_transaction_dependency_tracking",
+            "required": "WRITESET"
+        }
+    ],
+    "status": "error"
+}
+ MySQL  localhost:33066 ssl  JS > dba.configureInstance('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066') ;
+Please provide the password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066': ****
+Save password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+Configuring local MySQL instance listening at port 33066 for use in an InnoDB cluster...
+
+This instance reports its own address as lvwmysqlsndbd1:33066
+
+applierWorkerThreads will be set to the default value of 4.
+
+NOTE: Some configuration options need to be fixed:
++----------------------------------------+---------------+----------------+----------------------------+
+| Variable                               | Current Value | Required Value | Note                       |
++----------------------------------------+---------------+----------------+----------------------------+
+| binlog_transaction_dependency_tracking | COMMIT_ORDER  | WRITESET       | Update the server variable |
++----------------------------------------+---------------+----------------+----------------------------+
+
+Do you want to perform the required configuration changes? [y/n]: y
+Configuring instance...
+The instance 'lvwmysqlsndbd1:33066' was configured to be used in an InnoDB cluster.
+ MySQL  localhost:33066 ssl  JS > dba.checkInstanceConfiguration('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066');
+Please provide the password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066': ****
+Save password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+Validating local MySQL instance listening at port 33066 for use in an InnoDB cluster...
+
+This instance reports its own address as lvwmysqlsndbd1:33066
+
+Checking whether existing tables comply with Group Replication requirements...
+No incompatible tables detected
+
+Checking instance configuration...
+Instance configuration is compatible with InnoDB cluster
+
+The instance 'lvwmysqlsndbd1:33066' is valid to be used in an InnoDB cluster.
+
+{
+    "status": "ok"
+}
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS > dba.configureReplicaSetInstance('myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066',{clusterAdmin:"'rsadmin'@'%'",clusterAdminPassword:"rsadmin$12"})
+Please provide the password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066': ****
+Save password for 'myadmin@lvwmysqlsndbd1.corp.ute.com.uy:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+Configuring local MySQL instance listening at port 33066 for use in an InnoDB ReplicaSet...
+
+This instance reports its own address as lvwmysqlsndbd1:33066
+
+applierWorkerThreads will be set to the default value of 4.
+
+The instance 'lvwmysqlsndbd1:33066' is valid to be used in an InnoDB ReplicaSet.
+
+Creating user rsadmin@%.
+Account rsadmin@% was successfully created.
+
+The instance 'lvwmysqlsndbd1:33066' is already ready to be used in an InnoDB ReplicaSet.
+
+Successfully enabled parallel appliers.
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS > \connect rsadmin@lvwmysqlsndbd1:33066
+Creating a session to 'rsadmin@lvwmysqlsndbd1:33066'
+Please provide the password for 'rsadmin@lvwmysqlsndbd1:33066': **********
+Save password for 'rsadmin@lvwmysqlsndbd1:33066'? [Y]es/[N]o/Ne[v]er (default No): no
+Fetching schema names for auto-completion... Press ^C to stop.
+Closing old connection...
+Your MySQL connection id is 67
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+No default schema selected; type \use <schema> to set one.
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs = dba.createReplicaSet('ReplicaSnd12');
+A new replicaset with instance 'lvwmysqlsndbd1:33066' will be created.
+
+* Checking MySQL instance at lvwmysqlsndbd1:33066
+
+This instance reports its own address as lvwmysqlsndbd1:33066
+lvwmysqlsndbd1:33066: Instance configuration is suitable.
+
+* Checking connectivity and SSL configuration...
+* Updating metadata...
+
+ReplicaSet object successfully created for lvwmysqlsndbd1:33066.
+Use rs.addInstance() to add more asynchronously replicated instances to this replicaset and rs.status() to check its st          atus.
+
+<ReplicaSet:ReplicaSnd12>
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs.status();
+{
+    "replicaSet": {
+        "name": "ReplicaSnd12",
+        "primary": "lvwmysqlsndbd1:33066",
+        "status": "AVAILABLE",
+        "statusText": "All instances available.",
+        "topology": {
+            "lvwmysqlsndbd1:33066": {
+                "address": "lvwmysqlsndbd1:33066",
+                "instanceRole": "PRIMARY",
+                "mode": "R/W",
+                "status": "ONLINE"
+            }
+        },
+        "type": "ASYNC"
+    }
+}
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs.addInstance('lvwmysqlsndbd2.corp.ute.com.uy:33066');
+Adding instance to the replicaset...
+
+* Performing validation checks
+
+This instance reports its own address as lvwmysqlsndbd2:33066
+lvwmysqlsndbd2:33066: Instance configuration is suitable.
+
+* Checking async replication topology...
+
+* Checking connectivity and SSL configuration...
+
+* Checking transaction state of the instance...
+
+NOTE: The target instance 'lvwmysqlsndbd2:33066' has not been pre-provisioned (GTID set is empty). The Shell is unable to decide whether replication can completely recover its state.
+The safest and most convenient way to provision a new instance is through automatic clone provisioning, which will completely overwrite the state of 'lvwmysqlsndbd2:33066' with a physical snapshot from an existing replicaset member. To us          e this method by default, set the 'recoveryMethod' option to 'clone'.
+
+WARNING: It should be safe to rely on replication to incrementally recover the state of the new instance if you are sure all updates ever executed in the replicaset were done with GTIDs enabled, there are no purged transactions and the ne          w instance contains the same GTID set as the replicaset or a subset of it. To use this method by default, set the 'reco          veryMethod' option to 'incremental'.
+
+
+Please select a recovery method [C]lone/[I]ncremental recovery/[A]bort (default Clone):
+* Updating topology
+Monitoring Clone based state recovery of the new member. Press ^C to abort the operation.
+Clone based state recovery is now in progress.
+
+NOTE: A server restart is expected to happen as part of the clone process. If the
+server does not support the RESTART command or does not come back after a
+while, you may need to manually start it back.
+
+* Waiting for clone to finish...
+NOTE: Connection to server lost, restart probably in progress...
+* Waiting for server restart... timeout
+WARNING: Clone process appears to have finished and tried to restart the MySQL server, but it has not yet started back           up.
+
+Please make sure the MySQL server at 'lvwmysqlsndbd2:33066' is properly restarted. The operation will be reverted, but           you may retry adding the instance after restarting it.
+ERROR: Error adding instance to replicaset: MYSQLSH 51156: Timeout waiting for server to restart
+Reverting topology changes...
+ERROR: Error while reverting replication changes: MySQL Error 2013: Lost connection to MySQL server during query
+
+Changes successfully reverted.
+ERROR: lvwmysqlsndbd2:33066 could not be added to the replicaset
+ReplicaSet.addInstance: Timeout waiting for server to restart (MYSQLSH 51156)
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs.status();
+{
+    "replicaSet": {
+        "name": "ReplicaSnd12",
+        "primary": "lvwmysqlsndbd1:33066",
+        "status": "AVAILABLE",
+        "statusText": "All instances available.",
+        "topology": {
+            "lvwmysqlsndbd1:33066": {
+                "address": "lvwmysqlsndbd1:33066",
+                "instanceRole": "PRIMARY",
+                "mode": "R/W",
+                "status": "ONLINE"
+            }
+        },
+        "type": "ASYNC"
+    }
+}
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs.addInstance('lvwmysqlsndbd2.corp.ute.com.uy:33066');
+ERROR: Unable to connect to the target instance 'lvwmysqlsndbd2.corp.ute.com.uy:33066'. Please verify the connection se          ttings, make sure the instance is available and try again.
+ReplicaSet.addInstance: Could not open connection to 'lvwmysqlsndbd2.corp.ute.com.uy:33066': Cant connect to MySQL ser          ver on 'lvwmysqlsndbd2.corp.ute.com.uy:33066' (111) (MySQL Error 2003)
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs.addInstance('lvwmysqlsndbd2.corp.ute.com.uy:33066'); -- EJECUTYAR EL ADD OTRA VEZ
+Adding instance to the replicaset...
+
+* Performing validation checks
+
+This instance reports its own address as lvwmysqlsndbd2:33066
+lvwmysqlsndbd2:33066: Instance configuration is suitable.
+
+* Checking async replication topology...
+
+* Checking connectivity and SSL configuration...
+
+* Checking transaction state of the instance...
+The safest and most convenient way to provision a new instance is through automatic clone provisioning, which will comp          letely overwrite the state of 'lvwmysqlsndbd2:33066' with a physical snapshot from an existing replicaset member. To us          e this method by default, set the 'recoveryMethod' option to 'clone'.
+
+WARNING: It should be safe to rely on replication to incrementally recover the state of the new instance if you are sur          e all updates ever executed in the replicaset were done with GTIDs enabled, there are no purged transactions and the ne          w instance contains the same GTID set as the replicaset or a subset of it. To use this method by default, set the 'reco          veryMethod' option to 'incremental'.
+
+Incremental state recovery was selected because it seems to be safely usable.
+
+* Updating topology
+** Changing replication source of lvwmysqlsndbd2:33066 to lvwmysqlsndbd1:33066
+** Waiting for new instance to synchronize with PRIMARY...
+** Transactions replicated  ############################################################  100%
+
+The instance 'lvwmysqlsndbd2:33066' was added to the replicaset and is replicating from lvwmysqlsndbd1:33066.
+
+* Waiting for instance 'lvwmysqlsndbd2:33066' to synchronize the Metadata updates with the PRIMARY...
+** Transactions replicated  ############################################################  100%
+
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS >
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > rs.status();
+{
+    "replicaSet": {
+        "name": "ReplicaSnd12",
+        "primary": "lvwmysqlsndbd1:33066",
+        "status": "AVAILABLE",
+        "statusText": "All instances available.",
+        "topology": {
+            "lvwmysqlsndbd1:33066": {
+                "address": "lvwmysqlsndbd1:33066",
+                "instanceRole": "PRIMARY",
+                "mode": "R/W",
+                "status": "ONLINE"
+            },
+            "lvwmysqlsndbd2:33066": {
+                "address": "lvwmysqlsndbd2:33066",
+                "instanceRole": "SECONDARY",
+                "mode": "R/O",
+                "replication": {
+                    "applierStatus": "APPLIED_ALL",
+                    "applierThreadState": "Waiting for an event from Coordinator",
+                    "applierWorkerThreads": 4,
+                    "receiverStatus": "ON",
+                    "receiverThreadState": "Waiting for source to send event",
+                    "replicationLag": null,
+                    "replicationSsl": "TLS_AES_256_GCM_SHA384 TLSv1.3",
+                    "replicationSslMode": "REQUIRED"
+                },
+                "status": "ONLINE"
+            }
+        },
+        "type": "ASYNC"
+    }
+}
+ MySQL  lvwmysqlsndbd1:33066 ssl  JS > \sql
+Switching to SQL mode... Commands end with ;
+Fetching global names for auto-completion... Press ^C to stop.
+ MySQL  lvwmysqlsndbd1:33066 ssl  SQL > CREATE DATABASE `sitsigtred_test` /*!40100 DEFAULT CHARACTER SET latin1 */ /*!8          0016 DEFAULT ENCRYPTION='N' */;
+ERROR: 1044 (42000): Access denied for user 'rsadmin'@'%' to database 'sitsigtred_test'
+ MySQL  lvwmysqlsndbd1:33066 ssl  SQL > \quit
+Bye!
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysql -uroot -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 103
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+
+Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> CREATE DATABASE `sitsigtred_test` /*!40100 DEFAULT CHARACTER SET latin1 */ /*!80016 DEFAULT ENCRYPTION='N' */;
+Query OK, 1 row affected (0.00 sec)
+
+
+mysql> quit
+Bye
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysqlsh root@localhost:33066
+Please provide the password for 'root@localhost:33066': ************
+Save password for 'root@localhost:33066'? [Y]es/[N]o/Ne[v]er (default No): ne
+Please pick an option out of [Y]es/[N]o/Ne[v]er (default No): Save password for 'root@localhost:33066'? [Y]es/[N]o/Ne[v          ]er (default No): no                                                       no
+MySQL Shell 8.2.0-commercial
+
+Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+Oracle is a registered trademark of Oracle Corporation and/or its affiliates.
+Other names may be trademarks of their respective owners.
+
+Type '\help' or '\?' for help; '\quit' to exit.
+Creating a Classic session to 'root@localhost:33066'
+Fetching schema names for auto-completion... Press ^C to stop.
+Your MySQL connection id is 104
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+No default schema selected; type \use <schema> to set one.
+ MySQL  localhost:33066 ssl  JS > var rs = dba.getReplicaSet();
+You are connected to a member of replicaset 'ReplicaSnd12'.
+ MySQL  localhost:33066 ssl  JS > rs.status();
+WARNING: Unable to connect to the PRIMARY of the ReplicaSet ReplicaSnd12: MYSQLSH 51118: Could not open connection to '          lvwmysqlsndbd1:33066': Access denied for user 'root'@'lvwmysqlsndbd1.corp.ute.com.uy' (using password: YES)
+Cluster change operations will not be possible unless the PRIMARY can be reached.
+If the PRIMARY is unavailable, you must either repair it or perform a forced failover.
+See \help forcePrimaryInstance for more information.
+{
+    "replicaSet": {
+        "name": "ReplicaSnd12",
+        "primary": "lvwmysqlsndbd1:33066",
+        "status": "CATASTROPHIC",
+        "statusText": "No instances are available or reachable.",
+        "topology": {
+            "lvwmysqlsndbd1:33066": {
+                "address": "lvwmysqlsndbd1:33066",
+                "connectError": "Could not open connection to 'lvwmysqlsndbd1:33066': Access denied for user 'root'@'lv          wmysqlsndbd1.corp.ute.com.uy' (using password: YES)",
+                "fenced": null,
+                "instanceRole": "PRIMARY",
+                "mode": null,
+                "status": "UNREACHABLE"
+            },
+            "lvwmysqlsndbd2:33066": {
+                "address": "lvwmysqlsndbd2:33066",
+                "connectError": "Could not open connection to 'lvwmysqlsndbd2:33066': Access denied for user 'root'@'lv          wmysqlsndbd1.corp.ute.com.uy' (using password: YES)",
+                "fenced": null,
+                "instanceRole": "SECONDARY",
+                "mode": null,
+                "status": "UNREACHABLE"
+            }
+        },
+        "type": "ASYNC"
+    }
+}
+ MySQL  localhost:33066 ssl  JS > ^C
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS > quit
+ReferenceError: quit is not defined
+ MySQL  localhost:33066 ssl  JS > \quit
+Bye!
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$
+[mysql@lvwmysqlsndbd1 mysql_software]$ mysqlsh myadmin@localhost:33066
+Please provide the password for 'myadmin@localhost:33066': ****
+Save password for 'myadmin@localhost:33066'? [Y]es/[N]o/Ne[v]er (default No): ne
+Please pick an option out of [Y]es/[N]o/Ne[v]er (default No): Save password for 'myadmin@localhost:33066'? [Y]es/[N]o/N          e[v]er (default No): no                                                       no
+MySQL Shell 8.2.0-commercial
+
+Copyright (c) 2016, 2023, Oracle and/or its affiliates.
+Oracle is a registered trademark of Oracle Corporation and/or its affiliates.
+Other names may be trademarks of their respective owners.
+
+Type '\help' or '\?' for help; '\quit' to exit.
+Creating a Classic session to 'myadmin@localhost:33066'
+Fetching schema names for auto-completion... Press ^C to stop.
+Your MySQL connection id is 109
+Server version: 8.0.34-commercial MySQL Enterprise Server - Commercial
+No default schema selected; type \use <schema> to set one.
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS > var rs = dba.getReplicaSet();
+You are connected to a member of replicaset 'ReplicaSnd12'.
+ MySQL  localhost:33066 ssl  JS > rs.status();
+{
+    "replicaSet": {
+        "name": "ReplicaSnd12",
+        "primary": "lvwmysqlsndbd1:33066",
+        "status": "AVAILABLE",
+        "statusText": "All instances available.",
+        "topology": {
+            "lvwmysqlsndbd1:33066": {
+                "address": "lvwmysqlsndbd1:33066",
+                "instanceRole": "PRIMARY",
+                "mode": "R/W",
+                "status": "ONLINE"
+            },
+            "lvwmysqlsndbd2:33066": {
+                "address": "lvwmysqlsndbd2:33066",
+                "instanceRole": "SECONDARY",
+                "mode": "R/O",
+                "replication": {
+                    "applierStatus": "APPLIED_ALL",
+                    "applierThreadState": "Waiting for an event from Coordinator",
+                    "applierWorkerThreads": 4,
+                    "receiverStatus": "ON",
+                    "receiverThreadState": "Waiting for source to send event",
+                    "replicationLag": null,
+                    "replicationSsl": "TLS_AES_256_GCM_SHA384 TLSv1.3",
+                    "replicationSslMode": "REQUIRED"
+                },
+                "status": "ONLINE"
+            }
+        },
+        "type": "ASYNC"
+    }
+}
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS >  rs.setPrimaryInstance('lvwmysqlsndbd2.corp.ute.com.uy:33066');
+lvwmysqlsndbd2:33066 will be promoted to PRIMARY of 'ReplicaSnd12'.
+The current PRIMARY is lvwmysqlsndbd1:33066.
+
+* Connecting to replicaset instances
+** Connecting to lvwmysqlsndbd1:33066
+** Connecting to lvwmysqlsndbd2:33066
+** Connecting to lvwmysqlsndbd1:33066
+** Connecting to lvwmysqlsndbd2:33066
+
+* Performing validation checks
+** Checking async replication topology...
+** Checking transaction state of the instance...
+
+* Synchronizing transaction backlog at lvwmysqlsndbd2:33066
+** Transactions replicated  ############################################################  100%
+
+* Updating metadata
+
+* Acquiring locks in replicaset instances
+** Pre-synchronizing SECONDARIES
+** Acquiring global lock at PRIMARY
+** Acquiring global lock at SECONDARIES
+
+* Updating replication topology
+** Changing replication source of lvwmysqlsndbd1:33066 to lvwmysqlsndbd2:33066
+
+lvwmysqlsndbd2:33066 was promoted to PRIMARY.
+
+ MySQL  localhost:33066 ssl  JS > rs.status();
+{
+    "replicaSet": {
+        "name": "ReplicaSnd12",
+        "primary": "lvwmysqlsndbd2:33066",
+        "status": "AVAILABLE",
+        "statusText": "All instances available.",
+        "topology": {
+            "lvwmysqlsndbd1:33066": {
+                "address": "lvwmysqlsndbd1:33066",
+                "instanceRole": "SECONDARY",
+                "mode": "R/O",
+                "replication": {
+                    "applierStatus": "APPLIED_ALL",
+                    "applierThreadState": "Waiting for an event from Coordinator",
+                    "applierWorkerThreads": 4,
+                    "receiverStatus": "ON",
+                    "receiverThreadState": "Waiting for source to send event",
+                    "replicationLag": null,
+                    "replicationSsl": "TLS_AES_256_GCM_SHA384 TLSv1.3",
+                    "replicationSslMode": "REQUIRED"
+                },
+                "status": "ONLINE"
+            },
+            "lvwmysqlsndbd2:33066": {
+                "address": "lvwmysqlsndbd2:33066",
+                "instanceRole": "PRIMARY",
+                "mode": "R/W",
+                "status": "ONLINE"
+            }
+        },
+        "type": "ASYNC"
+    }
+}
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS >
+ MySQL  localhost:33066 ssl  JS > \sql
+Switching to SQL mode... Commands end with ;
+Error during auto-completion cache update: The client was disconnected by the server because of inactivity. See wait_timeout and interactive_timeout for configuring this behavior.
+ MySQL  localhost:33066 ssl  SQL >
+The global session got disconnected..
+Attempting to reconnect to 'mysql://myadmin@localhost:33066'..
+
+
+The global session was successfully reconnected.
+ MySQL  localhost:33066 ssl  SQL >
+ MySQL  localhost:33066 ssl  SQL >
+ MySQL  localhost:33066 ssl  SQL >
+ MySQL  localhost:33066 ssl  SQL > SHOW SLAVE STATUS\G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for source to send event
+                  Master_Host: lvwmysqlsndbd2
+                  Master_User: mysql_innodb_rs_1
+                  Master_Port: 33066
+                Connect_Retry: 60
+              Master_Log_File: mysql-bin.000002
+          Read_Master_Log_Pos: 5998
+               Relay_Log_File: lvwmysqlsndbd1-relay-bin.000002
+                Relay_Log_Pos: 420
+        Relay_Master_Log_File: mysql-bin.000002
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB:
+          Replicate_Ignore_DB:
+           Replicate_Do_Table:
+       Replicate_Ignore_Table:
+      Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+                   Last_Errno: 0
+                   Last_Error:
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 5998
+              Relay_Log_Space: 639
+              Until_Condition: None
+               Until_Log_File:
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: Yes
+           Master_SSL_CA_File:
+           Master_SSL_CA_Path:
+              Master_SSL_Cert:
+            Master_SSL_Cipher:
+               Master_SSL_Key:
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error:
+               Last_SQL_Errno: 0
+               Last_SQL_Error:
+  Replicate_Ignore_Server_Ids:
+             Master_Server_Id: 2
+                  Master_UUID: 4930f1b7-7f14-11ee-9760-005056ae5149
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Replica has read all relay log; waiting for more updates
+           Master_Retry_Count: 86400
+                  Master_Bind:
+      Last_IO_Error_Timestamp:
+     Last_SQL_Error_Timestamp:
+               Master_SSL_Crl:
+           Master_SSL_Crlpath:
+           Retrieved_Gtid_Set:
+            Executed_Gtid_Set: c61bf979-75f2-11ee-9f62-005056a627da:1-95
+                Auto_Position: 1
+         Replicate_Rewrite_DB:
+                 Channel_Name:
+           Master_TLS_Version:
+       Master_public_key_path:
+        Get_master_public_key: 0
+            Network_Namespace:
+1 row in set, 1 warning (0.0004 sec)
+Warning (code 1287): 'SHOW SLAVE STATUS' is deprecated and will be removed in a future release. Please use SHOW REPLICA STATUS instead
+ERROR: 1065 (42000): Query was empty
+ MySQL  localhost:33066 ssl  SQL > SHOW REPLICA STATUS\G;
+*************************** 1. row ***************************
+             Replica_IO_State: Waiting for source to send event
+                  Source_Host: lvwmysqlsndbd2
+                  Source_User: mysql_innodb_rs_1
+                  Source_Port: 33066
+                Connect_Retry: 60
+              Source_Log_File: mysql-bin.000002
+          Read_Source_Log_Pos: 5998
+               Relay_Log_File: lvwmysqlsndbd1-relay-bin.000002
+                Relay_Log_Pos: 420
+        Relay_Source_Log_File: mysql-bin.000002
+           Replica_IO_Running: Yes
+          Replica_SQL_Running: Yes
+              Replicate_Do_DB:
+          Replicate_Ignore_DB:
+           Replicate_Do_Table:
+       Replicate_Ignore_Table:
+      Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+                   Last_Errno: 0
+                   Last_Error:
+                 Skip_Counter: 0
+          Exec_Source_Log_Pos: 5998
+              Relay_Log_Space: 639
+              Until_Condition: None
+               Until_Log_File:
+                Until_Log_Pos: 0
+           Source_SSL_Allowed: Yes
+           Source_SSL_CA_File:
+           Source_SSL_CA_Path:
+              Source_SSL_Cert:
+            Source_SSL_Cipher:
+               Source_SSL_Key:
+        Seconds_Behind_Source: 0
+Source_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error:
+               Last_SQL_Errno: 0
+               Last_SQL_Error:
+  Replicate_Ignore_Server_Ids:
+             Source_Server_Id: 2
+                  Source_UUID: 4930f1b7-7f14-11ee-9760-005056ae5149
+             Source_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+    Replica_SQL_Running_State: Replica has read all relay log; waiting for more updates
+           Source_Retry_Count: 86400
+                  Source_Bind:
+      Last_IO_Error_Timestamp:
+     Last_SQL_Error_Timestamp:
+               Source_SSL_Crl:
+           Source_SSL_Crlpath:
+           Retrieved_Gtid_Set:
+            Executed_Gtid_Set: c61bf979-75f2-11ee-9f62-005056a627da:1-95
+                Auto_Position: 1
+         Replicate_Rewrite_DB:
+                 Channel_Name:
+           Source_TLS_Version:
+       Source_public_key_path:
+        Get_Source_public_key: 0
+            Network_Namespace:
+1 row in set (0.0005 sec)
+ERROR: 1065 (42000): Query was empty
+ MySQL  localhost:33066 ssl  SQL > \quit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

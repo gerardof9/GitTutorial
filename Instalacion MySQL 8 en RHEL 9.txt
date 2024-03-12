@@ -1,0 +1,231 @@
+Chapter 3 Installing MySQL on Unix/Linux Using Generic Binaries
+https://dev.mysql.com/doc/mysql-installation-excerpt/8.0/en/binary-installation.html
+
+1- Crear usuario, grupo y carpetas de mysql
+
+groupadd mysql
+passwd mysql
+useradd -m mysql 
+
+usermod -aG mysql mysql
+usermod -aG wheel mysql
+
+2- Bajar el software desde edelivery.oracle.com o desde Support (Patch & Updates)
+   A partir de MySQL version 8.0.34 los paquetes se llaman  mysql-8.0.34-linux-glibc2.17-x86_64.tar. (Cannot find TAR package for MySQL 8.0.34 for EL7 (Doc ID 2963940.1)    
+   
+   
+   En este caso el archivo a bajar es MySQL Commercial Server 8.0.34 TAR for Generic Linux (glibc2.28) x86 (64bit) (Patchset)
+
+
+3- Copiar el zip a una carpeta y descomprimir todo
+
+[mysql@lvwmysqlsndbd1 mysql_software]$ ls
+p35611199_580_Linux-x86-64.zip
+
+[mysql@lvwmysqlsndbd1 mysql_software]$ unzip p35611199_580_Linux-x86-64.zip
+Archive:  p35611199_580_Linux-x86-64.zip
+ extracting: mysql-commercial-8.0.34-linux-glibc2.28-x86_64.tar.gz
+ extracting: mysql-commercial-8.0.34-linux-glibc2.28-x86_64.tar.gz.asc
+ extracting: mysql-commercial-8.0.34-linux-glibc2.28-x86_64.tar.gz.md5
+ extracting: README.txt
+
+[mysql@lvwmysqlsndbd1 mysql_software]$ tar -zxvf mysql-commercial-8.0.34-linux-glibc2.28-x86_64.tar.gz
+
+
+4- Crear directorios (en realidad no deberia hacerse este paso, tienen que venir definidos como Volume Groups:
+
+mkdir /mysql_data
+mkdir /mysql_backup
+mkdir /mysql_binlog
+mkdir /mysql_scripts
+mkdir -p /etc/my.cnf.d
+
+chown -R mysql.mysql /mysql_binlog /mysql_scripts /mysql_data /mysql_software /mysql_backup
+
+[mysql@lvwmysqlsndbd1 ~]$ cd /mysql_software
+[mysql@lvwmysqlsndbd1 mysql_software]$ ln -s mysql-commercial-8.0.34-linux-glibc2.28-x86_64 mysql
+
+mkdir -p /mysql_software/mysql/log
+
+
+5- Editar o crear el archivo /etc/my.cnf:
+
+--- begin my.cnf --
+
+#
+# include all files from the config directory
+#
+!includedir /etc/my.cnf.d
+
+
+[mysqld]
+
+basedir = /mysql_software/mysql
+datadir = /mysql_data
+socket = /mysql_software/mysql/mysql.sock
+port = 33066
+
+[mysqld_safe]
+
+log_error = /mysql_software/mysql/log/mysql.log
+pid_file = /mysql_software/mysql/mysqld.pid
+
+[client]
+socket = /mysql_software/mysql/mysql.sock
+
+
+--- end --- 
+
+chown mysql.mysql /etc/my.cnf
+
+
+6- Inicializar el directorio de datos (esto crea archivos y carpetas dentro de /mysql_data)
+
+Crear el directorio /etc/my.cnf.d 
+
+mkdir /etc/my.cnf.d
+chown mysql.mysql /etc/my.cnf.d
+
+
+[mysql@lvwmysqlsndbd1 bin]$ ./mysqld --defaults-file=/etc/my.cnf --initialize --user=mysql
+2024-03-01T17:20:05.681317Z 0 [Warning] [MY-011070] [Server] 'binlog_format' is deprecated and will be removed in a future release.
+2024-03-01T17:20:05.681335Z 0 [Warning] [MY-011068] [Server] The syntax 'log_slave_updates' is deprecated and will be removed in a future release. Please use log_replica_updates instead.
+2024-03-01T17:20:05.681345Z 0 [Warning] [MY-011069] [Server] The syntax '--master-info-repository' is deprecated and will be removed in a future release.
+2024-03-01T17:20:05.681349Z 0 [Warning] [MY-011069] [Server] The syntax '--relay-log-info-repository' is deprecated and will be removed in a future release.
+2024-03-01T17:20:05.681358Z 0 [Warning] [MY-011068] [Server] The syntax 'sync_master_info' is deprecated and will be removed in a future release. Please use sync_source_info instead.
+2024-03-01T17:20:05.681523Z 0 [System] [MY-013169] [Server] /mysql_software/mysql-commercial-8.0.36-linux-glibc2.28-x86_64/bin/mysqld (mysqld 8.0.36-commercial) initializing of server in progress as process 538845
+2024-03-01T17:20:05.692997Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2024-03-01T17:20:05.932717Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2024-03-01T17:20:07.416651Z 6 [Note] [MY-010454] [Server] A temporary password is generated for root@localhost: ?s?Qbk8XnBHe
+
+
+
+--Levantar el servidor y probar conectarse:
+
+[mysql@lvwmysqlsndbd1 bin]$ ./mysqld --defaults-file=/etc/my.cnf --user=mysql &
+[1] 539338
+[mysql@lvwmysqlsndbd1 bin]$ 2024-03-01T17:22:27.417367Z 0 [Warning] [MY-011070] [Server] 'binlog_format' is deprecated and will be removed in a future release.
+2024-03-01T17:22:27.417392Z 0 [Warning] [MY-011068] [Server] The syntax 'log_slave_updates' is deprecated and will be removed in a future release. Please use log_replica_updates instead.
+2024-03-01T17:22:27.417403Z 0 [Warning] [MY-011069] [Server] The syntax '--master-info-repository' is deprecated and will be removed in a future release.
+2024-03-01T17:22:27.417410Z 0 [Warning] [MY-011069] [Server] The syntax '--relay-log-info-repository' is deprecated and will be removed in a future release.
+2024-03-01T17:22:27.417419Z 0 [Warning] [MY-011068] [Server] The syntax 'sync_master_info' is deprecated and will be removed in a future release. Please use sync_source_info instead.
+2024-03-01T17:22:27.417540Z 0 [System] [MY-010116] [Server] /mysql_software/mysql-commercial-8.0.36-linux-glibc2.28-x86_64/bin/mysqld (mysqld 8.0.36-commercial) starting as process 539338
+2024-03-01T17:22:27.425316Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2024-03-01T17:22:27.549604Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2024-03-01T17:22:27.702404Z 0 [Warning] [MY-010068] [Server] CA certificate ca.pem is self signed.
+2024-03-01T17:22:27.702458Z 0 [System] [MY-013602] [Server] Channel mysql_main configured to support TLS. Encrypted connections are now supported for this channel.
+2024-03-01T17:22:27.721176Z 0 [System] [MY-011323] [Server] X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /tmp/mysqlx.sock
+2024-03-01T17:22:27.721578Z 0 [System] [MY-010931] [Server] /mysql_software/mysql-commercial-8.0.36-linux-glibc2.28-x86_64/bin/mysqld: ready for connections. 
+Version: '8.0.36-commercial'  socket: '/mysql_software/mysql/mysql.sock'  port: 33066  MySQL Enterprise Server - Commercial.
+
+
+--Conectarse para cambiar la clave temporal asignada a root:
+
+[mysql@lvwmysqlsndbd1 bin]$ ./mysqladmin -uroot -p password
+Enter password:
+New password:
+Confirm new password:
+Warning: Since password will be sent to server in plain text, use ssl connection to ensure password safety.
+
+
+7- Crear un servicio con systemd
+
+- Bajar el servidor si está levantado: 
+
+/mysql_software/mysql/bin/mysqladmin -uroot -p shutdown
+
+- Crear el archivo /etc/systemd/system/mysqld.service, incluir la siguiente informacion:
+
+[root@lvwmysqlpricdp1 ~]# vi /etc/systemd/system/mysqld.service
+[root@lvwmysqlpricdp1 ~]# chown mysql.mysql /etc/systemd/system/mysqld.service
+
+
+--- begin mysqld.service ---
+
+[Unit]
+After=network.target
+After=syslog.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+User=mysql
+Group=mysql
+
+
+PIDFile=/mysql_software/mysql/mysqld.pid
+
+# Disable service start and stop timeout logic of systemd for mysqld service.
+TimeoutSec=0
+
+# Execute pre and post scripts as root
+#PermissionsStartOnly=true
+
+# Start main service
+ExecStart=/mysql_software/mysql/bin/mysqld --defaults-file=/etc/my.cnf --user=mysql
+
+# Use this to switch malloc implementation
+#EnvironmentFile=-/etc/sysconfig/mysql
+
+# Sets open_files_limit
+LimitNOFILE = 5000
+
+--- end mysqld.service ---
+
+[root@lvwmysqlsndbd1 bin]# systemctl daemon-reload
+[root@lvwmysqlsndbd1 mysql_software]$ systemctl enable mysqld.service
+Created symlink /etc/systemd/system/multi-user.target.wants/mysqld.service → /etc/systemd/system/mysqld.service.
+
+
+-- Levantar el servicio
+
+[mysql@lvwmysqlpricdp1 bin]$ systemctl status mysqld
+○ mysqld.service
+     Loaded: loaded (/etc/systemd/system/mysqld.service; enabled; preset: disabled)
+     Active: inactive (dead) since Fri 2024-03-01 14:59:49 -03; 4min 59s ago
+   Duration: 1min 21.221s
+   Main PID: 547479 (code=exited, status=0/SUCCESS)
+        CPU: 1.490s
+		
+[mysql@lvwmysqlpricdp1 bin]$ systemctl start mysqld
+==== AUTHENTICATING FOR org.freedesktop.systemd1.manage-units ====
+Authentication is required to start 'mysqld.service'.
+Authenticating as: root
+Password:
+==== AUTHENTICATION COMPLETE ====
+
+[mysql@lvwmysqlpricdp1 bin]$ systemctl status mysqld
+● mysqld.service
+     Loaded: loaded (/etc/systemd/system/mysqld.service; enabled; preset: disabled)
+     Active: active (running) since Fri 2024-03-01 15:05:10 -03; 3s ago
+   Main PID: 548213 (mysqld)
+      Tasks: 38 (limit: 22928)
+     Memory: 367.1M
+        CPU: 845ms
+     CGroup: /system.slice/mysqld.service
+             └─548213 /mysql_software/mysql/bin/mysqld --defaults-file=/etc/my.cnf --user=mysql
+
+
+Para debuguear usar journalctl -xeu mysqld.service
+Puede ser necesario usar systemctl enable mysqld.service
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
