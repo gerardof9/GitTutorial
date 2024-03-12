@@ -98,8 +98,6 @@ chown mysql.mysql /etc/my.cnf.d
 2024-03-01T17:20:05.932717Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
 2024-03-01T17:20:07.416651Z 6 [Note] [MY-010454] [Server] A temporary password is generated for root@localhost: ?s?Qbk8XnBHe
 
-
-
 --Levantar el servidor y probar conectarse:
 
 [mysql@lvwmysqlsndbd1 bin]$ ./mysqld --defaults-file=/etc/my.cnf --user=mysql &
@@ -117,7 +115,6 @@ chown mysql.mysql /etc/my.cnf.d
 2024-03-01T17:22:27.721176Z 0 [System] [MY-011323] [Server] X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /tmp/mysqlx.sock
 2024-03-01T17:22:27.721578Z 0 [System] [MY-010931] [Server] /mysql_software/mysql-commercial-8.0.36-linux-glibc2.28-x86_64/bin/mysqld: ready for connections. 
 Version: '8.0.36-commercial'  socket: '/mysql_software/mysql/mysql.sock'  port: 33066  MySQL Enterprise Server - Commercial.
-
 
 --Conectarse para cambiar la clave temporal asignada a root:
 
@@ -207,8 +204,7 @@ Password:
              └─548213 /mysql_software/mysql/bin/mysqld --defaults-file=/etc/my.cnf --user=mysql
 
 
-Para debuguear usar journalctl -xeu mysqld.service
-Puede ser necesario usar systemctl enable mysqld.service
+Para debuguear usar journalctl -xeu mysqld.service. Puede ser necesario usar systemctl enable mysqld.service
 
 
 
